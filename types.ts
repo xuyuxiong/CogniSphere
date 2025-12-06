@@ -1,3 +1,4 @@
+
 export enum NoteType {
   MARKDOWN = 'MARKDOWN',
   CODE = 'CODE',
@@ -51,7 +52,26 @@ export interface AppSettings {
   theme: 'light' | 'dark';
   useSemanticSearch: boolean;
   userName: string;
-  hasCompletedOnboarding: boolean; // New field for onboarding status
+}
+
+export interface RSSFeed {
+  url: string;
+  title: string;
+  description?: string;
+  image?: string;
+  category?: string;
+}
+
+export interface RSSItem {
+  title: string;
+  pubDate: string;
+  link: string;
+  guid: string;
+  author: string;
+  thumbnail?: string;
+  description: string;
+  content: string;
+  feedTitle?: string; // Helper for display
 }
 
 export const DEFAULT_PROMPTS: PromptTemplate[] = [

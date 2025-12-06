@@ -1,7 +1,8 @@
-import { Note, AppSettings, PromptTemplate, DEFAULT_PROMPTS } from '../types';
+
+import { Note, AppSettings, PromptTemplate, DEFAULT_PROMPTS, RSSFeed } from '../types';
 
 const DB_NAME = 'CogniSphereDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Upgraded version for RSS support
 
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -26,11 +27,16 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains('templates')) {
         db.createObjectStore('templates', { keyPath: 'id' });
       }
+
+      if (!db.objectStoreNames.contains('rss_feeds')) {
+        db.createObjectStore('rss_feeds', { keyPath: 'url' });
+      }
     };
   });
 };
 
 export const StorageService = {
+  // --- Notes ---
   async saveNote(note: Note): Promise<void> {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -58,12 +64,13 @@ export const StorageService = {
     return new Promise((resolve, reject) => {
       const tx = db.transaction('notes', 'readwrite');
       const store = tx.objectStore('notes');
-      store.delete(id); // Corrected syntax
+      store.delete(id);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   },
 
+  // --- Settings ---
   async getSettings(): Promise<AppSettings | null> {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -85,6 +92,7 @@ export const StorageService = {
     });
   },
 
+  // --- Templates ---
   async getTemplates(): Promise<PromptTemplate[]> {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -93,7 +101,6 @@ export const StorageService = {
       request.onsuccess = () => {
         const templates = request.result;
         if (templates.length === 0) {
-           // Seed defaults if empty
            resolve(DEFAULT_PROMPTS);
            DEFAULT_PROMPTS.forEach(t => StorageService.saveTemplate(t));
         } else {
@@ -109,6 +116,37 @@ export const StorageService = {
     return new Promise((resolve, reject) => {
       const tx = db.transaction('templates', 'readwrite');
       tx.objectStore('templates').put(template);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  // --- RSS Feeds ---
+  async getRSSFeeds(): Promise<RSSFeed[]> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('rss_feeds', 'readonly');
+      const request = tx.objectStore('rss_feeds').getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  },
+
+  async saveRSSFeed(feed: RSSFeed): Promise<void> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('rss_feeds', 'readwrite');
+      tx.objectStore('rss_feeds').put(feed);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  async deleteRSSFeed(url: string): Promise<void> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('rss_feeds', 'readwrite');
+      tx.objectStore('rss_feeds').delete(url);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
