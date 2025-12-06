@@ -51,6 +51,7 @@ export interface AppSettings {
   theme: 'light' | 'dark';
   useSemanticSearch: boolean;
   userName: string;
+  hasCompletedOnboarding: boolean; // New field for onboarding status
 }
 
 export const DEFAULT_PROMPTS: PromptTemplate[] = [
