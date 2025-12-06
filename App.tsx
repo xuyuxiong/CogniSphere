@@ -37,12 +37,14 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { StorageService } from './services/storageService';
 import { AIService } from './services/geminiService';
 import { RSSService, DEFAULT_FEEDS } from './services/rssService';
 import { KnowledgeGraph } from './components/KnowledgeGraph';
 import { MermaidBlock } from './components/MermaidBlock';
 import { EditorToolbar } from './components/EditorToolbar';
+import { CodeEditor } from './components/CodeEditor';
 import { Note, AppSettings, NoteType, AIProvider, PromptTemplate, NoteVersion, RSSFeed, RSSItem, ChatMessage } from './types';
 
 // Simple UUID generator
@@ -103,6 +105,7 @@ const App: React.FC = () => {
   const chatImageInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
 
   // Derived State
   const activeNote = useMemo(() => notes.find(n => n.id === activeNoteId), [notes, activeNoteId]);
@@ -189,15 +192,6 @@ const App: React.FC = () => {
         chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
      }
   }, [chatMessages, appMode]);
-
-  // Prism Highlight trigger
-  useEffect(() => {
-     // @ts-ignore
-     if (typeof Prism !== 'undefined') {
-       // @ts-ignore
-       Prism.highlightAll();
-     }
-  }, [activeNote?.content, appMode, chatMessages]);
 
   // --- Handlers ---
   const handleThemeToggle = () => {
@@ -361,6 +355,18 @@ const App: React.FC = () => {
         textarea.focus();
         textarea.setSelectionRange(newCursorPos, newCursorPos);
     }, 0);
+  };
+
+  // --- Sync Scroll ---
+  const handleEditorScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    const editor = e.target as HTMLTextAreaElement;
+    const preview = previewScrollRef.current;
+    if (editor && preview) {
+      // Calculate percentage
+      const percentage = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+      // Apply to preview
+      preview.scrollTop = percentage * (preview.scrollHeight - preview.clientHeight);
+    }
   };
 
   // --- RSS Handlers ---
@@ -835,7 +841,7 @@ const App: React.FC = () => {
                       
                       <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'dark:prose-invert'}`}>
                          <ReactMarkdown 
-                           remarkPlugins={[remarkGfm]}
+                           remarkPlugins={[remarkGfm, remarkBreaks]}
                            components={{
                               code(props) {
                                   const {children, className, node, ...rest} = props;
@@ -1054,36 +1060,41 @@ const App: React.FC = () => {
 
         {/* Content Area - Split View */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Editor Input */}
-          <textarea
-            ref={editorRef}
-            className="flex-1 p-8 resize-none focus:outline-none bg-white dark:bg-dark-bg text-slate-800 dark:text-slate-200 font-mono text-sm leading-7 border-r border-gray-200 dark:border-gray-800"
-            value={activeNote.content}
-            onChange={(e) => handleUpdateNote(activeNote.id, { content: e.target.value })}
-            placeholder="# 开始你的创作...\n支持 Markdown, Mermaid 图表, 表格等"
-            onPaste={(e) => {
-               const items = e.clipboardData.items;
-               for (let i = 0; i < items.length; i++) {
-                 if (items[i].type.indexOf('image') !== -1) {
-                   const blob = items[i].getAsFile();
-                   if (blob) {
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        const base64 = event.target?.result as string;
-                        handleEditorInsert(`\n![Pasted Image](${base64})\n`);
-                      };
-                      reader.readAsDataURL(blob);
-                   }
-                 }
-               }
-            }}
-          />
+          {/* Editor Input - Uses new CodeEditor */}
+          <div className="flex-1 h-full border-r border-gray-200 dark:border-gray-800 relative">
+             <CodeEditor 
+                ref={editorRef}
+                value={activeNote.content}
+                onChange={(val) => handleUpdateNote(activeNote.id, { content: val })}
+                onScroll={handleEditorScroll}
+                placeholder="# 开始你的创作...\n支持 Markdown, Mermaid 图表, 表格等"
+                onPaste={(e) => {
+                  const items = e.clipboardData.items;
+                  for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                      const blob = items[i].getAsFile();
+                      if (blob) {
+                         const reader = new FileReader();
+                         reader.onload = (event) => {
+                           const base64 = event.target?.result as string;
+                           handleEditorInsert(`\n![Pasted Image](${base64})\n`);
+                         };
+                         reader.readAsDataURL(blob);
+                      }
+                    }
+                  }
+               }}
+             />
+          </div>
           
           {/* Preview Panel */}
-          <div className="flex-1 p-8 overflow-y-auto prose dark:prose-invert prose-sm max-w-none bg-gray-50 dark:bg-slate-900/50 markdown-body">
+          <div 
+            ref={previewScrollRef}
+            className="flex-1 p-8 overflow-y-auto prose dark:prose-invert prose-sm max-w-none bg-gray-50 dark:bg-slate-900/50 markdown-body"
+          >
              {activeNote.content ? (
                <ReactMarkdown 
-                 remarkPlugins={[remarkGfm]}
+                 remarkPlugins={[remarkGfm, remarkBreaks]}
                  components={{
                     code(props) {
                         const {children, className, node, ...rest} = props;
