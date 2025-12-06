@@ -1,0 +1,5 @@
+{
+  "name": "CogniSphere",
+  "description": "一个具备语义搜索、知识图谱和本地优先存储功能的个人 AI 知识库。",
+  "requestFramePermissions": []
+}
