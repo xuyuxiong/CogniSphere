@@ -74,6 +74,16 @@ export interface RSSItem {
   feedTitle?: string; // Helper for display
 }
 
+// New Chat Interfaces
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  images?: string[]; // Base64 strings
+  sources?: Note[]; // RAG citations
+}
+
 export const DEFAULT_PROMPTS: PromptTemplate[] = [
   {
     id: '1',
