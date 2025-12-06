@@ -5,10 +5,8 @@ import {
   Search, 
   Settings, 
   Plus, 
-  Save, 
   Trash2, 
   Share2, 
-  BrainCircuit, 
   Moon, 
   Sun,
   Wand2,
@@ -28,18 +26,20 @@ import {
   FileUp,
   Link as LinkIcon,
   Loader2,
-  FileCode,
   Rss,
   Newspaper,
   ExternalLink,
   BookOpen
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { StorageService } from './services/storageService';
 import { AIService } from './services/geminiService';
 import { RSSService, DEFAULT_FEEDS } from './services/rssService';
 import { KnowledgeGraph } from './components/KnowledgeGraph';
-import { Note, AppSettings, NoteType, AIProvider, PromptTemplate, AIModelConfig, NoteVersion, RSSFeed, RSSItem } from './types';
+import { MermaidBlock } from './components/MermaidBlock';
+import { EditorToolbar } from './components/EditorToolbar';
+import { Note, AppSettings, NoteType, AIProvider, PromptTemplate, NoteVersion, RSSFeed, RSSItem } from './types';
 
 // Simple UUID generator
 const generateId = () => {
@@ -55,7 +55,7 @@ const PROVIDERS: { id: AIProvider; name: string; defaultBaseUrl?: string; defaul
 
 const App: React.FC = () => {
   // --- State ---
-  const [appMode, setAppMode] = useState<'notes' | 'reader'>('notes'); // New: Switch between KB and Reader
+  const [appMode, setAppMode] = useState<'notes' | 'reader'>('notes');
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -90,6 +90,7 @@ const App: React.FC = () => {
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // Derived State
   const activeNote = useMemo(() => notes.find(n => n.id === activeNoteId), [notes, activeNoteId]);
@@ -106,7 +107,6 @@ const App: React.FC = () => {
 
   // --- Effects ---
   useEffect(() => {
-    // Initial Load
     const loadData = async () => {
       const storedNotes = await StorageService.getNotes();
       const migratedNotes = storedNotes.map(n => ({ ...n, folder: n.folder || '' }));
@@ -131,10 +131,8 @@ const App: React.FC = () => {
       const storedTemplates = await StorageService.getTemplates();
       setTemplates(storedTemplates);
 
-      // Load RSS Feeds
       const feeds = await StorageService.getRSSFeeds();
       if (feeds.length === 0) {
-        // Seed Defaults
         setRssFeeds(DEFAULT_FEEDS);
         DEFAULT_FEEDS.forEach(f => StorageService.saveRSSFeed(f));
       } else {
@@ -144,7 +142,6 @@ const App: React.FC = () => {
     loadData();
   }, []);
 
-  // Fetch items when active feed changes
   useEffect(() => {
     if (!activeFeedUrl) {
       setFeedItems([]);
@@ -155,16 +152,24 @@ const App: React.FC = () => {
       try {
         const { items } = await RSSService.fetchFeed(activeFeedUrl);
         setFeedItems(items);
-        setActiveRssItem(null); // Clear active item when switching feeds
+        setActiveRssItem(null);
       } catch (e) {
         alert("无法加载该 RSS 源，请检查网络或源地址。");
-        console.error(e);
       } finally {
         setLoadingFeed(false);
       }
     };
     fetchItems();
   }, [activeFeedUrl]);
+
+  // Prism Highlight trigger
+  useEffect(() => {
+     // @ts-ignore
+     if (typeof Prism !== 'undefined') {
+       // @ts-ignore
+       Prism.highlightAll();
+     }
+  }, [activeNote?.content, appMode]);
 
   // --- Handlers ---
   const handleThemeToggle = () => {
@@ -192,7 +197,7 @@ const App: React.FC = () => {
     await StorageService.saveNote(newNote);
     setNotes(prev => [newNote, ...prev]);
     setActiveNoteId(newNote.id);
-    setAppMode('notes'); // Switch back to notes if creating from Reader
+    setAppMode('notes');
     if (viewMode === 'graph') setViewMode('card');
   };
 
@@ -297,19 +302,49 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Editor Insert Helper ---
+  const handleEditorInsert = (textToInsert: string, cursorOffset = 0) => {
+    if (!activeNote || !editorRef.current) return;
+    
+    const textarea = editorRef.current;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    
+    // Check if wrapping selected text
+    const selectedText = text.substring(start, end);
+    let newText = "";
+    let newCursorPos = start + textToInsert.length + cursorOffset;
+
+    if (selectedText.length > 0 && (textToInsert.startsWith('**') || textToInsert.startsWith('*') || textToInsert.startsWith('['))) {
+       // Simple wrapping logic for basic formatting
+       if (textToInsert === '**加粗文本**') newText = text.substring(0, start) + `**${selectedText}**` + text.substring(end);
+       else if (textToInsert === '*斜体文本*') newText = text.substring(0, start) + `*${selectedText}*` + text.substring(end);
+       else newText = text.substring(0, start) + textToInsert + text.substring(end);
+       newCursorPos = start + textToInsert.length;
+    } else {
+       newText = text.substring(0, start) + textToInsert + text.substring(end);
+    }
+    
+    handleUpdateNote(activeNote.id, { content: newText });
+    
+    // Focus back and set cursor
+    setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
   // --- RSS Handlers ---
   const handleAddRSS = async () => {
     const url = prompt("请输入 RSS Feed 地址：");
     if (!url) return;
-    
-    // Quick validate
     if (!url.startsWith('http')) return alert("请输入有效的 URL");
 
     try {
       setLoadingFeed(true);
       const { feed } = await RSSService.fetchFeed(url);
       
-      // Check duplicate
       if (rssFeeds.some(f => f.url === feed.url)) {
         alert("该订阅源已存在");
         return;
@@ -338,8 +373,6 @@ const App: React.FC = () => {
   };
 
   const handleClipRSSItem = async (item: RSSItem) => {
-    // Convert HTML content to Markdown approx or just keep HTML (ReactMarkdown can handle some html or use html directly)
-    // For MVP, we pass the content directly.
     await createNewNote({
       title: item.title,
       content: `> 原文: [${item.title}](${item.link}) \n> 来源: ${item.feedTitle} \n\n ${item.description} \n\n --- \n\n ${item.content}`,
@@ -350,7 +383,6 @@ const App: React.FC = () => {
   };
 
   // --- AI & Features ---
-
   const handleAIAction = async (template: PromptTemplate) => {
     if (!activeNote || !settings.aiConfig.apiKey) return alert("请先在设置中配置 API Key");
     setLoadingAI(true);
@@ -415,16 +447,13 @@ const App: React.FC = () => {
         const data = JSON.parse(event.target?.result as string);
         if (data.notes && Array.isArray(data.notes)) {
            if (!window.confirm(`检测到备份包含 ${data.notes.length} 条笔记。导入将覆盖当前同名ID数据或添加新数据。是否继续？`)) return;
-           
            for (const n of data.notes) await StorageService.saveNote(n);
            if (data.templates) for (const t of data.templates) await StorageService.saveTemplate(t);
            if (data.rssFeeds) for (const f of data.rssFeeds) await StorageService.saveRSSFeed(f);
-           
            const newNotes = await StorageService.getNotes();
            setNotes(newNotes);
            const newFeeds = await StorageService.getRSSFeeds();
            setRssFeeds(newFeeds);
-           
            alert("导入成功！");
         } else {
           alert("无效的备份文件格式");
@@ -437,12 +466,11 @@ const App: React.FC = () => {
   };
 
   // --- Sub-Renderers ---
-
   const renderSidebar = () => (
     <div className="w-64 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-gray-800 flex flex-col h-screen transition-colors duration-200 shrink-0 z-20">
       <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-2 text-brand-600 font-bold text-xl">
-          <BrainCircuit size={24} />
+          <Share2 size={24} />
           <span>CogniSphere</span>
         </div>
         <button onClick={handleThemeToggle} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
@@ -450,7 +478,6 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      {/* Main Nav Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800">
         <button 
           onClick={() => setAppMode('notes')}
@@ -485,11 +512,9 @@ const App: React.FC = () => {
         <button 
           onClick={handleCreateNote}
           className="col-span-2 bg-brand-600 hover:bg-brand-700 text-white p-2 rounded-md flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 text-sm font-medium"
-          title="新建空白笔记"
         >
           <Plus size={16} /> 新建
         </button>
-        
         <button 
           onClick={() => importFileRef.current?.click()}
           className="bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 p-2 rounded-md flex items-center justify-center transition-all shadow-sm active:scale-95"
@@ -498,7 +523,6 @@ const App: React.FC = () => {
           <FileUp size={16} />
         </button>
         <input type="file" ref={importFileRef} className="hidden" accept=".md,.txt,.js,.json,.ts" onChange={handleImportFileNote} />
-
         <button 
           onClick={handleImportUrlNote}
           className="bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 p-2 rounded-md flex items-center justify-center transition-all shadow-sm active:scale-95 relative"
@@ -563,7 +587,6 @@ const App: React.FC = () => {
           )
         )}
         
-        {/* Graph View Trigger */}
         <div className="pt-2 px-2">
            <button 
              onClick={() => { setActiveNoteId(null); setViewMode('graph'); }}
@@ -612,9 +635,7 @@ const App: React.FC = () => {
     </>
   );
 
-  // Recursive Tree View Component logic
   const renderTreeView = () => {
-    // Group notes by folder
     const treeStructure: Record<string, Note[]> = {};
     const rootNotes: Note[] = [];
 
@@ -711,7 +732,6 @@ const App: React.FC = () => {
                </div>
              )}
              
-             {/* Image Upload Trigger */}
              <button 
                onClick={() => fileInputRef.current?.click()}
                className="p-2 text-slate-500 hover:text-brand-600 hover:bg-gray-100 dark:hover:bg-slate-800 rounded transition-colors"
@@ -721,7 +741,6 @@ const App: React.FC = () => {
              </button>
              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
 
-             {/* History Trigger */}
              <button 
                onClick={() => setHistoryModalOpen(true)}
                className="p-2 text-slate-500 hover:text-brand-600 hover:bg-gray-100 dark:hover:bg-slate-800 rounded transition-colors"
@@ -730,13 +749,11 @@ const App: React.FC = () => {
                <History size={18} />
              </button>
 
-             {/* AI Menu */}
              <div className="relative group z-10">
                 <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-brand-50 dark:hover:bg-slate-700 hover:text-brand-600 rounded-md transition-all border border-transparent hover:border-brand-200">
                   <Wand2 size={16} /> AI 工具
                 </button>
                 <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-800 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700 hidden group-hover:block overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                   {/* Built-in quick actions can be added here */}
                   <div className="px-4 py-1.5 text-[10px] text-gray-400 font-bold uppercase tracking-wider bg-gray-50 dark:bg-slate-700/50">提示词模板</div>
                   {templates.map(t => (
                     <button 
@@ -783,17 +800,20 @@ const App: React.FC = () => {
              />
            </div>
         </div>
+        
+        {/* Editor Toolbar */}
+        <EditorToolbar onInsert={handleEditorInsert} />
 
         {/* Content Area - Split View */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Editor */}
+          {/* Editor Input */}
           <textarea
+            ref={editorRef}
             className="flex-1 p-8 resize-none focus:outline-none bg-white dark:bg-dark-bg text-slate-800 dark:text-slate-200 font-mono text-sm leading-7 border-r border-gray-200 dark:border-gray-800"
             value={activeNote.content}
             onChange={(e) => handleUpdateNote(activeNote.id, { content: e.target.value })}
-            placeholder="# 开始你的创作...\n支持 Markdown 语法\n粘贴图片或点击上方图标上传"
+            placeholder="# 开始你的创作...\n支持 Markdown, Mermaid 图表, 表格等"
             onPaste={(e) => {
-               // Handle paste image
                const items = e.clipboardData.items;
                for (let i = 0; i < items.length; i++) {
                  if (items[i].type.indexOf('image') !== -1) {
@@ -802,13 +822,7 @@ const App: React.FC = () => {
                       const reader = new FileReader();
                       reader.onload = (event) => {
                         const base64 = event.target?.result as string;
-                        const imageMarkdown = `\n![Pasted Image](${base64})\n`;
-                        const textarea = e.target as HTMLTextAreaElement;
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const text = textarea.value;
-                        const newText = text.substring(0, start) + imageMarkdown + text.substring(end);
-                        handleUpdateNote(activeNote.id, { content: newText }, true);
+                        handleEditorInsert(`\n![Pasted Image](${base64})\n`);
                       };
                       reader.readAsDataURL(blob);
                    }
@@ -817,13 +831,30 @@ const App: React.FC = () => {
             }}
           />
           
-          {/* Preview */}
-          <div className="flex-1 p-8 overflow-y-auto prose dark:prose-invert prose-sm max-w-none bg-gray-50 dark:bg-slate-900/50">
-             {activeNote.content ? <ReactMarkdown>{activeNote.content}</ReactMarkdown> : <div className="text-gray-400 italic">预览区域</div>}
+          {/* Preview Panel */}
+          <div className="flex-1 p-8 overflow-y-auto prose dark:prose-invert prose-sm max-w-none bg-gray-50 dark:bg-slate-900/50 markdown-body">
+             {activeNote.content ? (
+               <ReactMarkdown 
+                 remarkPlugins={[remarkGfm]}
+                 components={{
+                    code(props) {
+                        const {children, className, node, ...rest} = props;
+                        const match = /language-(\w+)/.exec(className || '');
+                        if (match && match[1] === 'mermaid') {
+                           return <MermaidBlock chart={String(children).replace(/\n$/, '')} />;
+                        }
+                        return <code {...rest} className={className}>{children}</code>;
+                    }
+                 }}
+               >
+                 {activeNote.content}
+               </ReactMarkdown>
+             ) : (
+               <div className="text-gray-400 italic">预览区域</div>
+             )}
           </div>
         </div>
         
-        {/* Footer info */}
         <div className="h-8 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between px-6 text-xs text-gray-400 bg-white dark:bg-dark-card select-none shrink-0">
            <span>字数: {activeNote.content.length}</span>
            <span className="flex items-center gap-3">
@@ -851,7 +882,6 @@ const App: React.FC = () => {
 
     return (
       <div className="flex-1 flex h-screen overflow-hidden bg-white dark:bg-dark-bg">
-        {/* Feed Items List */}
         <div className="w-80 border-r border-gray-200 dark:border-gray-800 overflow-y-auto bg-gray-50 dark:bg-slate-900/30 flex flex-col">
            <div className="p-4 border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-gray-50 dark:bg-slate-900/30 backdrop-blur z-10">
               <h3 className="font-bold text-slate-700 dark:text-slate-200 truncate">
@@ -882,7 +912,6 @@ const App: React.FC = () => {
            </div>
         </div>
 
-        {/* Article Reader */}
         <div className="flex-1 overflow-y-auto p-8 bg-white dark:bg-dark-bg">
            {activeRssItem ? (
              <div className="max-w-3xl mx-auto pb-20">
@@ -904,8 +933,6 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="prose dark:prose-invert max-w-none">
-                   {/* RSS content is usually HTML. We use a div with dangerouslySetInnerHTML 
-                       For a production app, sanitize this with DOMPurify! */}
                    <div dangerouslySetInnerHTML={{ __html: activeRssItem.content }} />
                 </div>
              </div>
@@ -963,7 +990,6 @@ const App: React.FC = () => {
             </div>
             
             <div className="flex-1 flex overflow-hidden">
-               {/* List */}
                <div className="w-64 border-r border-gray-200 dark:border-gray-800 overflow-y-auto bg-gray-50 dark:bg-slate-900/50">
                   <div className="p-3 text-xs font-bold text-gray-500 uppercase">历史快照 ({activeNote.versions.length})</div>
                   {activeNote.versions.length === 0 && <div className="p-4 text-sm text-gray-400 text-center">暂无历史版本</div>}
@@ -983,14 +1009,13 @@ const App: React.FC = () => {
                   ))}
                </div>
                
-               {/* Preview */}
                <div className="flex-1 p-6 overflow-y-auto bg-white dark:bg-dark-bg">
                   <div className="prose dark:prose-invert max-w-none">
                      <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 text-sm rounded border border-yellow-200 dark:border-yellow-900/50">
                         提示: 点击左侧列表中的“恢复此版本”按钮可回滚到该状态。
                      </div>
                      <h2 className="text-gray-400 border-b pb-2 mb-4">当前最新内容</h2>
-                     <ReactMarkdown>{activeNote.content}</ReactMarkdown>
+                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeNote.content}</ReactMarkdown>
                   </div>
                </div>
             </div>
@@ -1022,7 +1047,6 @@ const App: React.FC = () => {
              
              {settingsTab === 'general' && (
                <div className="space-y-6">
-                  {/* Section: User */}
                   <div className="space-y-3">
                     <label className="text-sm font-semibold text-gray-900 dark:text-gray-100">用户名称</label>
                     <input 
@@ -1034,7 +1058,6 @@ const App: React.FC = () => {
 
                   <div className="border-t border-gray-100 dark:border-gray-700"></div>
 
-                  {/* Section: AI Configuration */}
                   <div className="space-y-4">
                     <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                       AI 模型配置

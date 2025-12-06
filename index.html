@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CogniSphere - AI 知识库</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PrismJS CSS for Syntax Highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <script>
       tailwind.config = {
         darkMode: 'class',
@@ -24,30 +26,61 @@
                 card: '#1e293b',
                 text: '#e2e8f0'
               }
-            }
+            },
+            typography: (theme) => ({
+              DEFAULT: {
+                css: {
+                  color: theme('colors.slate.700'),
+                  a: {
+                    color: theme('colors.brand.600'),
+                    '&:hover': {
+                      color: theme('colors.brand.700'),
+                    },
+                  },
+                  'code::before': { content: '""' },
+                  'code::after': { content: '""' },
+                },
+              },
+              dark: {
+                css: {
+                  color: theme('colors.slate.300'),
+                  strong: { color: theme('colors.white') },
+                  h1: { color: theme('colors.white') },
+                  h2: { color: theme('colors.white') },
+                  h3: { color: theme('colors.white') },
+                  h4: { color: theme('colors.white') },
+                  a: { color: theme('colors.brand.400') },
+                  code: { color: theme('colors.slate.200') },
+                  blockquote: { color: theme('colors.slate.400'), borderLeftColor: theme('colors.slate.700') },
+                },
+              },
+            }),
           }
-        }
+        },
+        plugins: [
+          function({ addUtilities }) {
+            addUtilities({
+              '.prose img': { borderRadius: '0.5rem' },
+              '.prose pre': { backgroundColor: '#1e293b', color: '#e2e8f0' },
+            })
+          }
+        ]
       }
     </script>
     <style>
-      /* Custom Scrollbar for cleaner look */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 4px;
-      }
-      .dark ::-webkit-scrollbar-thumb {
-        background: #475569;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
-      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      .dark ::-webkit-scrollbar-thumb { background: #475569; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      
+      /* Markdown Styles */
+      .markdown-body table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+      .markdown-body th, .markdown-body td { border: 1px solid #cbd5e1; padding: 6px 12px; }
+      .dark .markdown-body th, .dark .markdown-body td { border-color: #475569; }
+      .markdown-body tr:nth-child(2n) { background-color: #f8fafc; }
+      .dark .markdown-body tr:nth-child(2n) { background-color: #1e293b; }
     </style>
   <script type="importmap">
 {
@@ -57,12 +90,22 @@
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^9.0.1",
     "d3": "https://aistudiocdn.com/d3@^7.9.0",
-    "uuid": "https://aistudiocdn.com/uuid@^13.0.0"
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
+    "mermaid": "https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.esm.min.mjs",
+    "remark-gfm": "https://esm.sh/remark-gfm@4.0.0"
   }
 }
 </script>
+<!-- Load PrismJS for syntax highlighting -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
 </head>
   <body class="bg-gray-50 text-slate-900 dark:bg-dark-bg dark:text-dark-text transition-colors duration-200">
     <div id="root"></div>
